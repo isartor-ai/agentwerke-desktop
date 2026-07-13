@@ -19,6 +19,9 @@ npm run typecheck
 npm run build
 ```
 
+Release builds are published through GitHub Actions. See
+[RELEASING.md](RELEASING.md) for the signed macOS release workflow.
+
 ## Desktop Workflow
 
 1. Create or open a BPMN file.

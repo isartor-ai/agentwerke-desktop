@@ -1,0 +1,247 @@
+name: Release Desktop App
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, for example v0.1.1
+        required: true
+        type: string
+      prerelease:
+        description: Mark the GitHub release as a prerelease
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-desktop-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  quality:
+    name: Quality gates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build renderer and Electron main process
+        run: npm run build
+
+  package-macos:
+    name: Package signed macOS app
+    needs: quality
+    runs-on: macos-latest
+
+    env:
+      CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Validate Apple signing secrets
+        shell: bash
+        run: |
+          missing=0
+
+          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_TEAM_ID; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error title=Missing GitHub secret::$name is required for signed macOS releases"
+              missing=1
+            fi
+          done
+
+          has_api_credentials=false
+          has_apple_id_credentials=false
+
+          if [[ -n "$APPLE_API_KEY" || -n "$APPLE_API_KEY_ID" || -n "$APPLE_API_ISSUER" ]]; then
+            has_api_credentials=true
+            for name in APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER; do
+              if [[ -z "${!name}" ]]; then
+                echo "::error title=Incomplete App Store Connect API credentials::$name is required when using API key notarization"
+                missing=1
+              fi
+            done
+          fi
+
+          if [[ -n "$APPLE_ID" || -n "$APPLE_APP_SPECIFIC_PASSWORD" ]]; then
+            has_apple_id_credentials=true
+            for name in APPLE_ID APPLE_APP_SPECIFIC_PASSWORD; do
+              if [[ -z "${!name}" ]]; then
+                echo "::error title=Incomplete Apple ID notarization credentials::$name is required when using Apple ID notarization"
+                missing=1
+              fi
+            done
+          fi
+
+          if [[ "$has_api_credentials" == false && "$has_apple_id_credentials" == false ]]; then
+            echo "::error title=Missing notarization credentials::Set APPLE_API_KEY, APPLE_API_KEY_ID, and APPLE_API_ISSUER, or set APPLE_ID and APPLE_APP_SPECIFIC_PASSWORD"
+            missing=1
+          fi
+
+          exit "$missing"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare App Store Connect API key
+        if: env.APPLE_API_KEY != ''
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+
+          key_id = os.environ["APPLE_API_KEY_ID"]
+          key_path = Path(os.environ["RUNNER_TEMP"]) / f"AuthKey_{key_id}.p8"
+          key_path.write_bytes(base64.b64decode(os.environ["APPLE_API_KEY"]))
+
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
+              env_file.write(f"APPLE_API_KEY={key_path}\n")
+          PY
+
+      - name: Build, sign, and notarize macOS package
+        run: npm run package:mac:signed
+
+      - name: Verify signed macOS app
+        shell: bash
+        run: |
+          app_path="$(find release -type d -name 'Agentwerke Desktop.app' -print -quit)"
+
+          if [[ -z "$app_path" ]]; then
+            echo "::error title=Missing app bundle::Could not find the packaged Agentwerke Desktop.app"
+            exit 1
+          fi
+
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+          spctl --assess --type execute --verbose=4 "$app_path"
+          xcrun stapler validate "$app_path"
+
+      - name: Upload signed macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentwerke-desktop-macos-signed
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.blockmap
+            release/latest-mac.yml
+          if-no-files-found: error
+          retention-days: 14
+
+  package-windows:
+    name: Package Windows app
+    needs: quality
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Windows package
+        run: npm run package:win
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentwerke-desktop-windows
+          path: |
+            release/*.exe
+            release/*.msi
+            release/*.blockmap
+            release/latest.yml
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-release:
+    name: Publish GitHub release
+    needs:
+      - package-macos
+      - package-windows
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+          IS_PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          mapfile -t assets < <(find artifacts -type f | sort)
+
+          if [[ "${#assets[@]}" -eq 0 ]]; then
+            echo "::error title=Missing release assets::No artifacts were downloaded for release publishing"
+            exit 1
+          fi
+
+          cat > release-notes.md <<EOF
+          Agentwerke Desktop ${TAG}
+
+          Built from ${GITHUB_SHA}.
+
+          The macOS app was Developer ID signed, notarized by Apple, stapled, and verified in CI with codesign, spctl, and stapler before this release was published.
+          EOF
+
+          args=(
+            --repo "$GITHUB_REPOSITORY"
+            --target "$GITHUB_SHA"
+            --title "Agentwerke Desktop ${TAG}"
+            --notes-file release-notes.md
+          )
+
+          if [[ "$IS_PRERELEASE" == "true" ]]; then
+            args+=(--prerelease)
+          else
+            args+=(--latest)
+          fi
+
+          gh release create "$TAG" "${assets[@]}" "${args[@]}"
