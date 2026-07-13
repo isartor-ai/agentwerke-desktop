@@ -12,6 +12,14 @@ on:
         required: true
         default: false
         type: boolean
+      macos_signing:
+        description: macOS signing mode
+        required: true
+        default: unsigned
+        type: choice
+        options:
+          - unsigned
+          - signed
 
 permissions:
   contents: write
@@ -48,11 +56,12 @@ jobs:
         run: npm run build
 
   package-macos:
-    name: Package signed macOS app
+    name: Package macOS app
     needs: quality
     runs-on: macos-latest
 
     env:
+      MACOS_SIGNING: ${{ inputs.macos_signing }}
       CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
       CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
       APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
@@ -73,6 +82,7 @@ jobs:
           cache: npm
 
       - name: Validate Apple signing secrets
+        if: inputs.macos_signing == 'signed'
         shell: bash
         run: |
           missing=0
@@ -118,7 +128,7 @@ jobs:
         run: npm ci
 
       - name: Prepare App Store Connect API key
-        if: env.APPLE_API_KEY != ''
+        if: inputs.macos_signing == 'signed' && env.APPLE_API_KEY != ''
         shell: bash
         run: |
           python3 - <<'PY'
@@ -135,9 +145,17 @@ jobs:
           PY
 
       - name: Build, sign, and notarize macOS package
+        if: inputs.macos_signing == 'signed'
         run: npm run package:mac:signed
 
+      - name: Build unsigned macOS package
+        if: inputs.macos_signing == 'unsigned'
+        run: npm run package:mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
       - name: Verify signed macOS app
+        if: inputs.macos_signing == 'signed'
         shell: bash
         run: |
           app_path="$(find release -type d -name 'Agentwerke Desktop.app' -print -quit)"
@@ -151,10 +169,15 @@ jobs:
           spctl --assess --type execute --verbose=4 "$app_path"
           xcrun stapler validate "$app_path"
 
-      - name: Upload signed macOS artifacts
+      - name: Warn about unsigned macOS artifact
+        if: inputs.macos_signing == 'unsigned'
+        run: |
+          echo "::warning title=Unsigned macOS artifact::This macOS build is not Developer ID signed or notarized. Gatekeeper may block it. Use macos_signing=signed after Apple secrets are configured for public macOS distribution."
+
+      - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: agentwerke-desktop-macos-signed
+          name: agentwerke-desktop-macos-${{ inputs.macos_signing }}
           path: |
             release/*.dmg
             release/*.zip
@@ -215,6 +238,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ inputs.tag }}
           IS_PRERELEASE: ${{ inputs.prerelease }}
+          MACOS_SIGNING: ${{ inputs.macos_signing }}
         run: |
           mapfile -t assets < <(find artifacts -type f | sort)
 
@@ -223,12 +247,18 @@ jobs:
             exit 1
           fi
 
+          if [[ "$MACOS_SIGNING" == "signed" ]]; then
+            macos_note="The macOS app was Developer ID signed, notarized by Apple, stapled, and verified in CI with codesign, spctl, and stapler before this release was published."
+          else
+            macos_note="The macOS artifact is unsigned and not notarized because Apple signing credentials were not provided. macOS Gatekeeper may block it or report that the app is damaged. Use signed mode after configuring Apple Developer ID and notarization secrets for public macOS distribution."
+          fi
+
           cat > release-notes.md <<EOF
           Agentwerke Desktop ${TAG}
 
           Built from ${GITHUB_SHA}.
 
-          The macOS app was Developer ID signed, notarized by Apple, stapled, and verified in CI with codesign, spctl, and stapler before this release was published.
+          ${macos_note}
           EOF
 
           args=(
