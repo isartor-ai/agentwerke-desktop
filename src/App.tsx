@@ -56,6 +56,14 @@ export function App() {
   }, [settings]);
 
   useEffect(() => {
+    window.agentwerkeDesktop?.setDirty(dirty);
+  }, [dirty]);
+
+  useEffect(() => {
+    if (window.agentwerkeDesktop) {
+      return undefined;
+    }
+
     const handler = (event: BeforeUnloadEvent) => {
       if (!dirty) {
         return;
