@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { checkServer, importWorkflow, publishWorkflow, validateWorkflow } from './api/agentwerkeClient';
 import { createEmptyDiagram } from './bpmn/constants';
 import { inspectAgentwerkeXml } from './bpmn/xmlMetadata';
@@ -30,6 +30,10 @@ function fileNameFromPath(path?: string | null): string {
     return 'Untitled workflow.bpmn';
   }
   return path.split(/[\\/]/).pop() || 'workflow.bpmn';
+}
+
+function closeMenu(event: MouseEvent<HTMLButtonElement>) {
+  event.currentTarget.closest('details')?.removeAttribute('open');
 }
 
 export function App() {
@@ -165,7 +169,7 @@ export function App() {
 
   const handlePublish = async () => {
     setBusy(true);
-    setMessage('Publishing workflow through Agentwerke...');
+    setMessage('Deploying workflow to Agentwerke...');
     try {
       const current = await getCurrentXml();
       const validationResult = await validateWorkflow(settings, current);
@@ -184,9 +188,9 @@ export function App() {
 
       const published = await publishWorkflow(settings, imported.workflowId, current);
       setDirty(false);
-      setMessage(`Published ${published.workflowId}`);
+      setMessage(`Deployed ${published.workflowId}`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Publish failed');
+      setMessage(error instanceof Error ? error.message : 'Deploy failed');
     } finally {
       setBusy(false);
     }
@@ -213,8 +217,78 @@ export function App() {
     setDirty(true);
   };
 
+  const handleHelp = async () => {
+    if (window.agentwerkeDesktop) {
+      await window.agentwerkeDesktop.openHelp();
+    } else {
+      window.open('https://github.com/isartor-ai/agentwerke-desktop#readme', '_blank', 'noopener,noreferrer');
+    }
+    setMessage('Opened help');
+  };
+
+  const runMenuAction = (event: MouseEvent<HTMLButtonElement>, action: () => void | Promise<void>) => {
+    closeMenu(event);
+    void action();
+  };
+
+  useEffect(() => {
+    if (!window.agentwerkeDesktop?.onMenuCommand) {
+      return undefined;
+    }
+
+    return window.agentwerkeDesktop.onMenuCommand((command) => {
+      if (busy && (command === 'validate' || command === 'deploy' || command === 'check-server')) {
+        return;
+      }
+
+      if (command === 'new') {
+        void handleNew();
+      } else if (command === 'open') {
+        void handleOpen();
+      } else if (command === 'save') {
+        void handleSave();
+      } else if (command === 'save-as') {
+        void handleSaveAs();
+      } else if (command === 'validate') {
+        void handleValidate();
+      } else if (command === 'deploy') {
+        void handlePublish();
+      } else if (command === 'check-server') {
+        void handleCheckServer();
+      }
+    });
+  });
+
   return (
     <main className="app-shell">
+      <nav className="app-menu" aria-label="Application menu">
+        <details className="menu-item">
+          <summary>File</summary>
+          <div className="menu-panel">
+            <button type="button" onClick={(event) => runMenuAction(event, handleNew)}>New</button>
+            <button type="button" onClick={(event) => runMenuAction(event, handleOpen)} disabled={!canUseDesktopFiles}>Open...</button>
+            <button type="button" onClick={(event) => runMenuAction(event, handleSave)}>Save</button>
+            <button type="button" onClick={(event) => runMenuAction(event, handleSaveAs)} disabled={!canUseDesktopFiles}>Save As...</button>
+          </div>
+        </details>
+
+        <details className="menu-item">
+          <summary>Deploy To</summary>
+          <div className="menu-panel">
+            <button type="button" onClick={(event) => runMenuAction(event, handleValidate)} disabled={busy}>Validate Workflow</button>
+            <button type="button" onClick={(event) => runMenuAction(event, handlePublish)} disabled={busy}>Agentwerke</button>
+            <button type="button" onClick={(event) => runMenuAction(event, handleCheckServer)} disabled={busy}>Check Agentwerke API</button>
+          </div>
+        </details>
+
+        <details className="menu-item">
+          <summary>Help</summary>
+          <div className="menu-panel">
+            <button type="button" onClick={(event) => runMenuAction(event, handleHelp)}>Agentwerke Desktop Help</button>
+          </div>
+        </details>
+      </nav>
+
       <header className="app-header">
         <div>
           <h1>Agentwerke Desktop</h1>
@@ -226,7 +300,7 @@ export function App() {
           <button type="button" onClick={() => void handleSave()}>Save</button>
           <button type="button" onClick={() => void handleSaveAs()} disabled={!canUseDesktopFiles}>Save As</button>
           <button type="button" onClick={() => void handleValidate()} disabled={busy}>Validate</button>
-          <button type="button" className="primary" onClick={() => void handlePublish()} disabled={busy}>Publish</button>
+          <button type="button" className="primary" onClick={() => void handlePublish()} disabled={busy}>Deploy</button>
         </nav>
       </header>
 

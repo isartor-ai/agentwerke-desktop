@@ -59,6 +59,70 @@ button.primary:hover:not(:disabled) {
   flex-direction: column;
 }
 
+.app-menu {
+  position: relative;
+  z-index: 10;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  padding: 0 0.5rem;
+  border-bottom: 1px solid #d9dee8;
+  background: #ffffff;
+}
+
+.menu-item {
+  position: relative;
+}
+
+.menu-item summary {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 0.625rem;
+  border-radius: 4px;
+  color: #172033;
+  cursor: pointer;
+  font-size: 0.875rem;
+  list-style: none;
+}
+
+.menu-item summary::-webkit-details-marker {
+  display: none;
+}
+
+.menu-item[open] summary,
+.menu-item summary:hover {
+  background: #edf2f8;
+}
+
+.menu-panel {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  min-width: 13rem;
+  display: grid;
+  gap: 0.125rem;
+  padding: 0.25rem;
+  border: 1px solid #c8d0dc;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgb(23 32 51 / 16%);
+}
+
+.menu-panel button {
+  width: 100%;
+  justify-content: flex-start;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  text-align: left;
+}
+
+.menu-panel button:hover:not(:disabled) {
+  background: #edf2f8;
+}
+
 .app-header {
   height: 72px;
   display: flex;
