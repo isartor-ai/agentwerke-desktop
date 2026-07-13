@@ -13,6 +13,7 @@
     "build": "npm run typecheck && vite build && tsc -p tsconfig.electron.json",
     "package": "npm run build && electron-builder",
     "package:mac": "npm run build && electron-builder --mac --publish never",
+    "package:mac:unsigned": "npm run build && electron-builder --mac --publish never -c.mac.identity=null -c.mac.notarize=false",
     "package:mac:signed": "node scripts/validateMacReleaseEnv.mjs && npm run build && electron-builder --mac --publish never -c.forceCodeSigning=true",
     "package:win": "npm run build && electron-builder --win --publish never"
   },
