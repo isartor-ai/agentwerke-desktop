@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type MenuItemConstructorOptions } from 'electron';
 import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -11,6 +11,65 @@ interface BpmnFileResult {
   filePath?: string;
   fileName?: string;
   content?: string;
+}
+
+type DesktopMenuCommand = 'new' | 'open' | 'save' | 'save-as' | 'validate' | 'deploy' | 'check-server';
+
+const helpUrl = 'https://github.com/isartor-ai/agentwerke-desktop#readme';
+
+function sendMenuCommand(command: DesktopMenuCommand) {
+  const targetWindow = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+  targetWindow?.webContents.send('desktop-menu-command', command);
+}
+
+function createApplicationMenu() {
+  const isMac = process.platform === 'darwin';
+  const fileMenu: MenuItemConstructorOptions = {
+    label: 'File',
+    submenu: [
+      { label: 'New', accelerator: 'CmdOrCtrl+N', click: () => sendMenuCommand('new') },
+      { label: 'Open...', accelerator: 'CmdOrCtrl+O', click: () => sendMenuCommand('open') },
+      { type: 'separator' },
+      { label: 'Save', accelerator: 'CmdOrCtrl+S', click: () => sendMenuCommand('save') },
+      { label: 'Save As...', accelerator: 'CmdOrCtrl+Shift+S', click: () => sendMenuCommand('save-as') },
+      { type: 'separator' },
+      isMac ? { role: 'close' } : { role: 'quit' },
+    ],
+  };
+
+  const template: MenuItemConstructorOptions[] = [
+    ...(isMac ? [{ role: 'appMenu' } satisfies MenuItemConstructorOptions] : []),
+    fileMenu,
+    {
+      label: 'Deploy To',
+      submenu: [
+        { label: 'Validate Workflow', accelerator: 'CmdOrCtrl+Shift+V', click: () => sendMenuCommand('validate') },
+        { label: 'Agentwerke', accelerator: 'CmdOrCtrl+Shift+D', click: () => sendMenuCommand('deploy') },
+        { type: 'separator' },
+        { label: 'Check Agentwerke API', click: () => sendMenuCommand('check-server') },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+      ],
+    },
+    {
+      label: 'Help',
+      submenu: [
+        { label: 'Agentwerke Desktop Help', accelerator: 'F1', click: () => void shell.openExternal(helpUrl) },
+      ],
+    },
+  ];
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 function createWindow() {
@@ -38,6 +97,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  createApplicationMenu();
   createWindow();
 
   app.on('activate', () => {
@@ -121,4 +181,8 @@ ipcMain.handle('bpmn:save-as', async (_event, payload: { content: string }): Pro
     fileName: result.filePath.split(/[\\/]/).pop(),
     content: payload.content,
   };
+});
+
+ipcMain.handle('help:open', async (): Promise<void> => {
+  await shell.openExternal(helpUrl);
 });
