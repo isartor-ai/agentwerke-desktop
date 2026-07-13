@@ -46,6 +46,7 @@
   "build": {
     "appId": "dev.agentwerke.desktop",
     "productName": "Agentwerke Desktop",
+    "icon": "build/icon.png",
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
@@ -56,6 +57,7 @@
     },
     "mac": {
       "category": "public.app-category.developer-tools",
+      "icon": "build/icon.icns",
       "target": [
         "dmg",
         "zip"
@@ -69,9 +71,11 @@
       "sign": false
     },
     "win": {
+      "icon": "build/icon.ico",
       "target": "nsis"
     },
     "linux": {
+      "icon": "build/icon.png",
       "target": "AppImage",
       "category": "Development"
     }
