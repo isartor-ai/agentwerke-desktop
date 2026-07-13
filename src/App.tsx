@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type MouseEvent } from 'react';
 import { checkServer, importWorkflow, publishWorkflow, validateWorkflow } from './api/agentwerkeClient';
 import { createEmptyDiagram } from './bpmn/constants';
 import { inspectAgentwerkeXml } from './bpmn/xmlMetadata';
@@ -38,6 +38,7 @@ function closeMenu(event: MouseEvent<HTMLButtonElement>) {
 
 export function App() {
   const modelerRef = useRef<BpmnModelerHandle | null>(null);
+  const fallbackOpenInputRef = useRef<HTMLInputElement | null>(null);
   const [xml, setXml] = useState(() => createEmptyDiagram());
   const [filePath, setFilePath] = useState<string | undefined>();
   const [fileName, setFileName] = useState('Untitled workflow.bpmn');
@@ -49,7 +50,6 @@ export function App() {
   const [message, setMessage] = useState<string | null>('Ready');
 
   const inspection = useMemo(() => inspectAgentwerkeXml(xml), [xml]);
-  const canUseDesktopFiles = Boolean(window.agentwerkeDesktop);
 
   useEffect(() => {
     window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
@@ -90,7 +90,12 @@ export function App() {
   };
 
   const handleOpen = async () => {
-    if (!window.agentwerkeDesktop || !confirmDiscard()) {
+    if (!confirmDiscard()) {
+      return;
+    }
+
+    if (!window.agentwerkeDesktop) {
+      fallbackOpenInputRef.current?.click();
       return;
     }
 
@@ -106,6 +111,28 @@ export function App() {
     setValidation(null);
     setDirty(false);
     setMessage(`Opened ${result.fileName ?? 'BPMN file'}`);
+  };
+
+  const handleFallbackOpen = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const content = await file.text();
+      await modelerRef.current?.importXML(content);
+      setXml(content);
+      setFilePath(undefined);
+      setFileName(file.name || 'workflow.bpmn');
+      setValidation(null);
+      setDirty(false);
+      setMessage(`Opened ${file.name || 'BPMN file'}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to open BPMN file');
+    }
   };
 
   const handleSave = async () => {
@@ -266,9 +293,9 @@ export function App() {
           <summary>File</summary>
           <div className="menu-panel">
             <button type="button" onClick={(event) => runMenuAction(event, handleNew)}>New</button>
-            <button type="button" onClick={(event) => runMenuAction(event, handleOpen)} disabled={!canUseDesktopFiles}>Open...</button>
+            <button type="button" onClick={(event) => runMenuAction(event, handleOpen)}>Open...</button>
             <button type="button" onClick={(event) => runMenuAction(event, handleSave)}>Save</button>
-            <button type="button" onClick={(event) => runMenuAction(event, handleSaveAs)} disabled={!canUseDesktopFiles}>Save As...</button>
+            <button type="button" onClick={(event) => runMenuAction(event, handleSaveAs)}>Save As...</button>
           </div>
         </details>
 
@@ -290,15 +317,24 @@ export function App() {
       </nav>
 
       <header className="app-header">
+        <input
+          ref={fallbackOpenInputRef}
+          className="fallback-open-input"
+          type="file"
+          accept=".bpmn,.xml,application/xml,text/xml"
+          onChange={(event) => void handleFallbackOpen(event)}
+          tabIndex={-1}
+          aria-hidden="true"
+        />
         <div>
           <h1>Agentwerke Desktop</h1>
           <p>{fileName}{dirty ? ' *' : ''}</p>
         </div>
         <nav className="toolbar" aria-label="File and deployment actions">
           <button type="button" onClick={() => void handleNew()}>New</button>
-          <button type="button" onClick={() => void handleOpen()} disabled={!canUseDesktopFiles}>Open</button>
+          <button type="button" onClick={() => void handleOpen()}>Open</button>
           <button type="button" onClick={() => void handleSave()}>Save</button>
-          <button type="button" onClick={() => void handleSaveAs()} disabled={!canUseDesktopFiles}>Save As</button>
+          <button type="button" onClick={() => void handleSaveAs()}>Save As</button>
           <button type="button" onClick={() => void handleValidate()} disabled={busy}>Validate</button>
           <button type="button" className="primary" onClick={() => void handlePublish()} disabled={busy}>Deploy</button>
         </nav>
