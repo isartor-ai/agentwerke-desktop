@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('agentwerkeDesktop', {
     ipcRenderer.invoke('bpmn:save', { filePath, content }) as Promise<BpmnFileResult>,
   saveBpmnAs: (content: string) =>
     ipcRenderer.invoke('bpmn:save-as', { content }) as Promise<BpmnFileResult>,
+  setDirty: (dirty: boolean) => ipcRenderer.send('bpmn:dirty-changed', dirty),
   onMenuCommand: (callback: (command: DesktopMenuCommand) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, command: DesktopMenuCommand) => callback(command);
     ipcRenderer.on('desktop-menu-command', listener);

@@ -16,6 +16,8 @@ interface BpmnFileResult {
 type DesktopMenuCommand = 'new' | 'open' | 'save' | 'save-as' | 'validate' | 'deploy' | 'check-server';
 
 const helpUrl = 'https://github.com/isartor-ai/agentwerke-desktop#readme';
+const windowDirtyState = new WeakMap<BrowserWindow, boolean>();
+const closeConfirmedWindows = new WeakSet<BrowserWindow>();
 
 function sendMenuCommand(command: DesktopMenuCommand) {
   const targetWindow = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
@@ -88,6 +90,34 @@ function createWindow() {
     },
   });
 
+  window.on('close', (event) => {
+    if (closeConfirmedWindows.has(window) || !windowDirtyState.get(window)) {
+      return;
+    }
+
+    event.preventDefault();
+    const choice = dialog.showMessageBoxSync(window, {
+      type: 'warning',
+      buttons: ['Cancel', 'Close Without Saving'],
+      defaultId: 0,
+      cancelId: 0,
+      title: 'Unsaved BPMN changes',
+      message: 'Close Agentwerke Desktop?',
+      detail: 'This workflow has unsaved BPMN changes. Close without saving?',
+      noLink: true,
+    });
+
+    if (choice === 1) {
+      closeConfirmedWindows.add(window);
+      window.close();
+    }
+  });
+
+  window.on('closed', () => {
+    closeConfirmedWindows.delete(window);
+    windowDirtyState.delete(window);
+  });
+
   if (isDev && process.env.VITE_DEV_SERVER_URL) {
     void window.loadURL(process.env.VITE_DEV_SERVER_URL);
     window.webContents.openDevTools({ mode: 'detach' });
@@ -108,8 +138,13 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
+  app.quit();
+});
+
+ipcMain.on('bpmn:dirty-changed', (event, dirty: boolean) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (window) {
+    windowDirtyState.set(window, Boolean(dirty));
   }
 });
 
