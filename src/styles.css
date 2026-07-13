@@ -146,6 +146,10 @@ button.primary:hover:not(:disabled) {
   font-size: 0.875rem;
 }
 
+.fallback-open-input {
+  display: none;
+}
+
 .toolbar {
   display: flex;
   gap: 0.5rem;
