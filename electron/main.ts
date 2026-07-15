@@ -16,6 +16,7 @@ interface BpmnFileResult {
 type DesktopMenuCommand = 'new' | 'open' | 'save' | 'save-as' | 'validate' | 'deploy' | 'check-server';
 
 const helpUrl = 'https://github.com/isartor-ai/agentwerke-desktop#readme';
+const mainWindows = new Set<BrowserWindow>();
 const windowDirtyState = new WeakMap<BrowserWindow, boolean>();
 const closeConfirmedWindows = new WeakSet<BrowserWindow>();
 
@@ -35,7 +36,12 @@ function createApplicationMenu() {
       { label: 'Save', accelerator: 'CmdOrCtrl+S', click: () => sendMenuCommand('save') },
       { label: 'Save As...', accelerator: 'CmdOrCtrl+Shift+S', click: () => sendMenuCommand('save-as') },
       { type: 'separator' },
-      isMac ? { role: 'close' } : { role: 'quit' },
+      ...(isMac
+        ? [
+            { label: 'Close Window', accelerator: 'CmdOrCtrl+W', role: 'close' } satisfies MenuItemConstructorOptions,
+            { label: 'Quit Agentwerke Desktop', accelerator: 'CmdOrCtrl+Q', click: () => app.quit() },
+          ]
+        : [{ role: 'quit' } satisfies MenuItemConstructorOptions]),
     ],
   };
 
@@ -89,6 +95,7 @@ function createWindow() {
       sandbox: false,
     },
   });
+  mainWindows.add(window);
 
   window.on('close', (event) => {
     if (closeConfirmedWindows.has(window) || !windowDirtyState.get(window)) {
@@ -114,8 +121,13 @@ function createWindow() {
   });
 
   window.on('closed', () => {
+    mainWindows.delete(window);
     closeConfirmedWindows.delete(window);
     windowDirtyState.delete(window);
+
+    if (mainWindows.size === 0) {
+      app.quit();
+    }
   });
 
   if (isDev && process.env.VITE_DEV_SERVER_URL) {
@@ -138,6 +150,10 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  app.quit();
+});
+
+ipcMain.handle('app:quit', () => {
   app.quit();
 });
 

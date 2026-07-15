@@ -123,6 +123,12 @@ button.primary:hover:not(:disabled) {
   background: #edf2f8;
 }
 
+.menu-separator {
+  height: 1px;
+  margin: 0.25rem 0;
+  background: #d9dee8;
+}
+
 .app-header {
   height: 72px;
   display: flex;

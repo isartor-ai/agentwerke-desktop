@@ -9,6 +9,7 @@ declare global {
       saveBpmn(filePath: string | undefined, content: string): Promise<BpmnFileResult>;
       saveBpmnAs(content: string): Promise<BpmnFileResult>;
       setDirty(dirty: boolean): void;
+      quitApp(): Promise<void>;
       onMenuCommand(callback: (command: DesktopMenuCommand) => void): () => void;
       openHelp(): Promise<void>;
     };

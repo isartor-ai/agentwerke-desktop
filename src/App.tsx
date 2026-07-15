@@ -261,6 +261,15 @@ export function App() {
     setMessage('Opened help');
   };
 
+  const handleQuit = async () => {
+    if (window.agentwerkeDesktop?.quitApp) {
+      await window.agentwerkeDesktop.quitApp();
+      return;
+    }
+
+    window.close();
+  };
+
   const runMenuAction = (event: MouseEvent<HTMLButtonElement>, action: () => void | Promise<void>) => {
     closeMenu(event);
     void action();
@@ -304,6 +313,8 @@ export function App() {
             <button type="button" onClick={(event) => runMenuAction(event, handleOpen)}>Open...</button>
             <button type="button" onClick={(event) => runMenuAction(event, handleSave)}>Save</button>
             <button type="button" onClick={(event) => runMenuAction(event, handleSaveAs)}>Save As...</button>
+            <div className="menu-separator" role="separator" />
+            <button type="button" onClick={(event) => runMenuAction(event, handleQuit)}>Quit Agentwerke Desktop</button>
           </div>
         </details>
 
